@@ -165,7 +165,7 @@ fn start_animation(
     if !*done {
         if let Ok(mut player) = player.get_single_mut() {
             if let Some(animation) = scene_handle.animations.first() {
-                player.play(animation.clone_weak()).repeat();
+                player.play(animation.clone_weak(), None).repeat();
                 *done = true;
             }
         }
@@ -197,7 +197,10 @@ fn keyboard_animation_control(
             // change the animation the frame after return was pressed
             *current_animation = (*current_animation + 1) % scene_handle.animations.len();
             player
-                .play(scene_handle.animations[*current_animation].clone_weak())
+                .play(
+                    scene_handle.animations[*current_animation].clone_weak(),
+                    None,
+                )
                 .repeat();
             *changing = false;
         }
