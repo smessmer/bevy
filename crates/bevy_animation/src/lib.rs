@@ -243,8 +243,8 @@ pub fn animation_player(
     children: Query<&Children>,
 ) {
     for (entity, mut player) in &mut animation_players {
-        _update_transitions(&mut player, &time);
-        _run_animation_player(
+        update_transitions(&mut player, &time);
+        run_animation_player(
             entity,
             player,
             &time,
@@ -256,7 +256,7 @@ pub fn animation_player(
     }
 }
 
-fn _run_animation_player(
+fn run_animation_player(
     entity: Entity,
     mut player: Mut<AnimationPlayer>,
     time: &Time,
@@ -273,7 +273,7 @@ fn _run_animation_player(
     }
 
     // Apply the main animation
-    _apply_animation(
+    apply_animation(
         1.0,
         &mut player.animation,
         paused,
@@ -292,7 +292,7 @@ fn _run_animation_player(
         ..
     } in &mut player.transitions
     {
-        _apply_animation(
+        apply_animation(
             *current_weight,
             animation,
             paused,
@@ -307,7 +307,7 @@ fn _run_animation_player(
 }
 
 #[allow(clippy::too_many_arguments)]
-fn _apply_animation(
+fn apply_animation(
     weight: f32,
     animation: &mut PlayingAnimation,
     paused: bool,
@@ -330,7 +330,7 @@ fn _apply_animation(
             elapsed += animation_clip.duration;
         }
         for (path, curves) in &animation_clip.curves {
-            let Some(current_entity) = _find_entity(entity, path, children, names) else {
+            let Some(current_entity) = find_entity(entity, path, children, names) else {
                 continue;
             };
             if let Ok(mut transform) = transforms.get_mut(current_entity) {
@@ -406,7 +406,7 @@ fn _apply_animation(
     }
 }
 
-fn _find_entity(
+fn find_entity(
     entity: Entity,
     path: &EntityPath,
     children: &Query<&Children>,
@@ -437,7 +437,7 @@ fn _find_entity(
     Some(current_entity)
 }
 
-fn _update_transitions(player: &mut AnimationPlayer, time: &Time) {
+fn update_transitions(player: &mut AnimationPlayer, time: &Time) {
     player.transitions.retain_mut(|animation| {
         animation.current_weight -= animation.weight_decline_per_sec * time.delta_seconds();
         animation.current_weight > 0.0
