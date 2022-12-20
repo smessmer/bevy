@@ -21,7 +21,7 @@ use bevy_math::{Quat, Vec3};
 use bevy_reflect::{FromReflect, Reflect, TypeUuid};
 use bevy_time::Time;
 use bevy_transform::{prelude::Transform, TransformSystem};
-use bevy_utils::{tracing::warn, HashMap};
+use bevy_utils::{tracing::warn, HashMap, Entry};
 
 #[allow(missing_docs)]
 pub mod prelude {
@@ -284,6 +284,8 @@ fn run_animation_player(
     transforms: &mut Query<&mut Transform>,
     children: &Query<&Children>,
 ) {
+    let mut entity_cache = HashMap::new();
+
     let paused = player.paused;
     // Continue if paused unless the `AnimationPlayer` was changed
     // This allow the animation to still be updated if the player.elapsed field was manually updated in pause
@@ -302,6 +304,7 @@ fn run_animation_player(
         names,
         transforms,
         children,
+        &mut entity_cache,
     );
 
     // Apply any potential fade-out transitions from previous animations
@@ -321,6 +324,7 @@ fn run_animation_player(
             names,
             transforms,
             children,
+            &mut entity_cache,
         );
     }
 }
@@ -336,6 +340,7 @@ fn apply_animation(
     names: &Query<&Name>,
     transforms: &mut Query<&mut Transform>,
     children: &Query<&Children>,
+    entity_cache: &mut HashMap<EntityPath, Option<Entity>>,
 ) {
     if let Some(animation_clip) = animations.get(&animation.animation_clip) {
         if !paused {
@@ -349,7 +354,7 @@ fn apply_animation(
             elapsed += animation_clip.duration;
         }
         for (path, curves) in &animation_clip.curves {
-            let Some(current_entity) = find_entity(entity, path, children, names) else {
+            let Some(current_entity) = find_entity(entity, path, children, names, entity_cache) else {
                 continue;
             };
             if let Ok(mut transform) = transforms.get_mut(current_entity) {
@@ -425,35 +430,44 @@ fn apply_animation(
     }
 }
 
-fn find_entity(
+fn find_entity<'a>(
     entity: Entity,
     path: &EntityPath,
     children: &Query<&Children>,
     names: &Query<&Name>,
+    entity_cache: &'a mut HashMap<EntityPath, Option<Entity>>,
 ) -> Option<Entity> {
-    // PERF: finding the target entity can be optimised
-    let mut current_entity = entity;
-    // Ignore the first name, it is the root node which we already have
-    for part in path.parts.iter().skip(1) {
-        let mut found = false;
-        if let Ok(children) = children.get(current_entity) {
-            for child in children.deref() {
-                if let Ok(name) = names.get(*child) {
-                    if name == part {
-                        // Found a children with the right name, continue to the next part
-                        current_entity = *child;
-                        found = true;
-                        break;
+    let from_cache = entity_cache.get(path);
+    if let Some(found) = from_cache {
+        *found
+    } else {
+        // PERF: finding the target entity can be optimised
+        let mut current_entity = entity;
+        // Ignore the first name, it is the root node which we already have
+        for part in path.parts.iter().skip(1) {
+            let mut found = false;
+            if let Ok(children) = children.get(current_entity) {
+                for child in children.deref() {
+                    if let Ok(name) = names.get(*child) {
+                        if name == part {
+                            // Found a children with the right name, continue to the next part
+                            current_entity = *child;
+                            found = true;
+                            break;
+                        }
                     }
                 }
             }
+            if !found {
+                warn!("Entity not found for path {:?} on part {:?}", path, part);
+                entity_cache.insert(path.clone(), None);
+                return None;
+            }
         }
-        if !found {
-            warn!("Entity not found for path {:?} on part {:?}", path, part);
-            return None;
-        }
+        entity_cache.insert(path.clone(), Some(current_entity));
+
+        Some(current_entity)
     }
-    Some(current_entity)
 }
 
 fn update_transitions(player: &mut AnimationPlayer, time: &Time) {
